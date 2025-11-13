@@ -43,7 +43,7 @@
   <div id="hoverInfo"></div>
 
   <script type="module">
-    // 🔑 Ton token Cesium ion (fourni par toi)
+    // 🔑 Ton token Cesium ion
     Cesium.Ion.defaultAccessToken =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIyMzI2ZTg2Ny0zZjZlLTQ1ZGMtYmQ1ZS0zOGI3MTU0NGRjYjYiLCJpZCI6MzYwMDE0LCJpYXQiOjE3NjMwMjc5Njd9.oneA95UdUxZN2hOvSfc8T5vO7C7YMFnFsucSyyj4ooQ';
 
@@ -93,39 +93,30 @@
     // On garde en mémoire le dernier bâtiment surligné
     let lastHighlightedFeature = null;
 
-    // Colorer le bâtiment situé à la position donnée
-    function highlightBuildingAtPosition(positionCartesian) {
+    // Colorer le bâtiment situé au CENTRE de l'écran
+    function highlightBuildingUnderCenter() {
       const scene = viewer.scene;
+      const canvas = scene.canvas;
 
-      // On convertit la position 3D en coordonnées écran (x, y)
-      const windowPos = Cesium.SceneTransforms.wgs84ToWindowCoordinates(
-        scene,
-        positionCartesian
+      const center = new Cesium.Cartesian2(
+        canvas.clientWidth / 2,
+        canvas.clientHeight / 2
       );
 
-      if (!Cesium.defined(windowPos)) {
-        return;
-      }
+      const picked = scene.pick(center);
 
-      // On cache temporairement le marker pour ne pas le "pick" à la place du bâtiment
-      const wasShown = searchMarker.show;
-      searchMarker.show = false;
-      const picked = scene.pick(windowPos);
-      searchMarker.show = wasShown;
-
-      // On vérifie qu'on a bien un feature 3D Tiles (bâtiment OSM)
       if (!Cesium.defined(picked) || !(picked instanceof Cesium.Cesium3DTileFeature)) {
         return;
       }
 
       const feature = picked;
 
-      // On remet l'ancien bâtiment sur sa couleur normale (blanc = garde la texture)
+      // Remet l'ancien bâtiment en blanc
       if (lastHighlightedFeature) {
         lastHighlightedFeature.color = Cesium.Color.WHITE;
       }
 
-      // On colorie le nouveau bâtiment en rouge bien visible
+      // Colore le nouveau bâtiment en ROUGE
       feature.color = Cesium.Color.RED.withAlpha(0.9);
       lastHighlightedFeature = feature;
     }
@@ -153,13 +144,11 @@
         searchMarker.show = true;
       }
 
-      // On vole vers la destination puis on surligne le bâtiment
+      // On vole vers la destination puis on surligne le bâtiment au centre
       viewer.camera.flyTo({
         destination: destination,
         complete: function () {
-          if (position) {
-            highlightBuildingAtPosition(position);
-          }
+          highlightBuildingUnderCenter();
         }
       });
     };
@@ -174,7 +163,7 @@
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
 
-      // Points orange pour tes bâtiments annotés
+      // Points ORANGE pour tes bâtiments annotés
       entity.point = new Cesium.PointGraphics({
         pixelSize: 12,
         color: Cesium.Color.ORANGE,
