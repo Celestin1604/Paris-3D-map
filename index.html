@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -43,15 +44,16 @@
   <div id="hoverInfo"></div>
 
   <script type="module">
-    // 🔑 Mets ici TON token Cesium ion
-    Cesium.Ion.defaultAccessToken = 'VOTRE_TOKEN_CESIUM_ION_ICI';
+    // 🔑 Ton token Cesium ion (fourni par toi)
+    Cesium.Ion.defaultAccessToken =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIyMzI2ZTg2Ny0zZjZlLTQ1ZGMtYmQ1ZS0zOGI3MTU0NGRjYjYiLCJpZCI6MzYwMDE0LCJpYXQiOjE3NjMwMjc5Njd9.oneA95UdUxZN2hOvSfc8T5vO7C7YMFnFsucSyyj4ooQ';
 
     // --- Création du viewer ---
     const viewer = new Cesium.Viewer("cesiumContainer", {
       terrain: Cesium.Terrain.fromWorldTerrain(),
       timeline: false,
       animation: false,
-      geocoder: true,          // barre de recherche
+      geocoder: true,          // ✅ barre de recherche
       homeButton: false,
       sceneModePicker: false,
       baseLayerPicker: true,
@@ -89,33 +91,47 @@
       }
     });
 
-    // Fonction qui applique un style au tileset OSM
-    // pour colorier en ROUGE les bâtiments proches de la position recherchée
-    function styleBuildingsNearPosition(positionCartesian) {
-      const carto = Cesium.Cartographic.fromCartesian(positionCartesian);
-      const lon = Cesium.Math.toDegrees(carto.longitude);
-      const lat = Cesium.Math.toDegrees(carto.latitude);
+    // On garde en mémoire le dernier bâtiment surligné
+    let lastHighlightedFeature = null;
 
-      // Expression de distance en 2D (lon/lat) entre le bâtiment et le point recherché
-      const distanceExpr =
-        `distance(vec2(${lon}, ${lat}), vec2(\${feature['cesium#longitude']}, \${feature['cesium#latitude']}))`;
+    // Colorer le bâtiment situé à la position donnée
+    function highlightBuildingAtPosition(positionCartesian) {
+      const scene = viewer.scene;
 
-      // Style 3D Tiles : distanceFromSearch < seuil -> rouge, sinon blanc
-      osmBuildings.style = new Cesium.Cesium3DTileStyle({
-        defines: {
-          distanceFromSearch: distanceExpr
-        },
-        color: {
-          conditions: [
-            // Rayon d'environ 100 m autour du point recherché
-            ["${distanceFromSearch} < 0.001", "color('red')"],
-            ["true", "color('#ffffff')"]
-          ]
-        }
-      });
+      // On convertit la position 3D en coordonnées écran (x, y)
+      const windowPos = Cesium.SceneTransforms.wgs84ToWindowCoordinates(
+        scene,
+        positionCartesian
+      );
+
+      if (!Cesium.defined(windowPos)) {
+        return;
+      }
+
+      // On cache temporairement le marker pour ne pas le "pick" à la place du bâtiment
+      const wasShown = searchMarker.show;
+      searchMarker.show = false;
+      const picked = scene.pick(windowPos);
+      searchMarker.show = wasShown;
+
+      // On vérifie qu'on a bien un feature 3D Tiles (bâtiment OSM)
+      if (!Cesium.defined(picked) || !(picked instanceof Cesium.Cesium3DTileFeature)) {
+        return;
+      }
+
+      const feature = picked;
+
+      // On remet l'ancien bâtiment sur sa couleur normale (blanc = garde la texture)
+      if (lastHighlightedFeature) {
+        lastHighlightedFeature.color = Cesium.Color.WHITE;
+      }
+
+      // On colorie le nouveau bâtiment en rouge bien visible
+      feature.color = Cesium.Color.RED.withAlpha(0.9);
+      lastHighlightedFeature = feature;
     }
 
-    // --- On branche la logique sur le géocodeur (barre de recherche) ---
+    // --- Branche la logique sur la barre de recherche ---
     const geocoderViewModel = viewer.geocoder.viewModel;
 
     geocoderViewModel.destinationFound = function (viewModel, destination) {
@@ -133,16 +149,20 @@
       }
 
       if (position) {
-        // Point rouge
+        // Place / déplace le point rouge
         searchMarker.position = position;
         searchMarker.show = true;
-
-        // Mise à jour du style des bâtiments autour de cette position
-        styleBuildingsNearPosition(position);
       }
 
-      // On fait quand même le flyTo normal vers la destination
-      viewer.camera.flyTo({ destination: destination });
+      // On vole vers la destination puis on surligne le bâtiment
+      viewer.camera.flyTo({
+        destination: destination,
+        complete: function () {
+          if (position) {
+            highlightBuildingAtPosition(position);
+          }
+        }
+      });
     };
 
     // --- Tes points GeoJSON persos (batiments.geojson) ---
@@ -155,6 +175,7 @@
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
 
+      // Points orange pour tes bâtiments annotés
       entity.point = new Cesium.PointGraphics({
         pixelSize: 12,
         color: Cesium.Color.ORANGE,
