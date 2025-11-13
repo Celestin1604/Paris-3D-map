@@ -43,11 +43,10 @@
   <div id="hoverInfo"></div>
 
   <script type="module">
-    // Ton token Cesium ion
-    Cesium.Ion.defaultAccessToken =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIyMzI2ZTg2Ny0zZjZlLTQ1ZGMtYmQ1ZS0zOGI3MTU0NGRjYjYiLCJpZCI6MzYwMDE0LCJpYXQiOjE3NjMwMjc5Njd9.oneA95UdUxZN2hOvSfc8T5vO7C7YMFnFsucSyyj4ooQ';
+    // 🔑 Mets ici TON token Cesium ion
+    Cesium.Ion.defaultAccessToken = 'VOTRE_TOKEN_CESIUM_ION_ICI';
 
-    // Création du viewer
+    // --- Création du viewer ---
     const viewer = new Cesium.Viewer("cesiumContainer", {
       terrain: Cesium.Terrain.fromWorldTerrain(),
       timeline: false,
@@ -61,7 +60,7 @@
       selectionIndicator: false
     });
 
-    // Bâtiments OSM 3D
+    // --- Bâtiments OSM 3D ---
     const osmBuildings = await Cesium.createOsmBuildingsAsync();
     viewer.scene.primitives.add(osmBuildings);
 
@@ -76,7 +75,7 @@
       duration: 2.5
     });
 
-    // ---------- POINT ROUGE POUR LE RÉSULTAT DE RECHERCHE ----------
+    // --- Point rouge pour la recherche ---
     const searchMarker = viewer.entities.add({
       name: "Résultat de recherche",
       show: false,
@@ -90,32 +89,36 @@
       }
     });
 
-    // On mémorise le bâtiment actuellement surligné
-    let lastHighlightedFeature = null;
+    // Fonction qui applique un style au tileset OSM
+    // pour colorier en ROUGE les bâtiments proches de la position recherchée
+    function styleBuildingsNearPosition(positionCartesian) {
+      const carto = Cesium.Cartographic.fromCartesian(positionCartesian);
+      const lon = Cesium.Math.toDegrees(carto.longitude);
+      const lat = Cesium.Math.toDegrees(carto.latitude);
 
-    function highlightBuildingUnderCenter() {
-      const center = new Cesium.Cartesian2(
-        viewer.scene.canvas.clientWidth / 2,
-        viewer.scene.canvas.clientHeight / 2
-      );
-      const picked = viewer.scene.pick(center);
+      // Expression de distance en 2D (lon/lat) entre le bâtiment et le point recherché
+      const distanceExpr =
+        `distance(vec2(${lon}, ${lat}), vec2(\${feature['cesium#longitude']}, \${feature['cesium#latitude']}))`;
 
-      // On vérifie que c'est bien un bâtiment OSM
-      if (Cesium.defined(picked) && picked.tileset === osmBuildings) {
-        // On remet l'ancien bâtiment à la couleur par défaut
-        if (lastHighlightedFeature) {
-          lastHighlightedFeature.color = Cesium.Color.WHITE;
+      // Style 3D Tiles : distanceFromSearch < seuil -> rouge, sinon blanc
+      osmBuildings.style = new Cesium.Cesium3DTileStyle({
+        defines: {
+          distanceFromSearch: distanceExpr
+        },
+        color: {
+          conditions: [
+            // Rayon d'environ 100 m autour du point recherché
+            ["${distanceFromSearch} < 0.001", "color('red')"],
+            ["true", "color('#ffffff')"]
+          ]
         }
-        lastHighlightedFeature = picked;
-        picked.color = Cesium.Color.RED.withAlpha(0.9); // bâtiment rouge
-      }
+      });
     }
 
-    // On remplace le comportement du géocodeur
+    // --- On branche la logique sur le géocodeur (barre de recherche) ---
     const geocoderViewModel = viewer.geocoder.viewModel;
 
     geocoderViewModel.destinationFound = function (viewModel, destination) {
-      // On calcule un point pour le marqueur rouge
       let position = null;
 
       if (destination instanceof Cesium.Cartesian3) {
@@ -130,20 +133,19 @@
       }
 
       if (position) {
+        // Point rouge
         searchMarker.position = position;
         searchMarker.show = true;
+
+        // Mise à jour du style des bâtiments autour de cette position
+        styleBuildingsNearPosition(position);
       }
 
-      // On gère nous-mêmes le flyTo puis le surlignage
-      viewer.camera.flyTo({
-        destination: destination,
-        complete: function () {
-          highlightBuildingUnderCenter();
-        }
-      });
+      // On fait quand même le flyTo normal vers la destination
+      viewer.camera.flyTo({ destination: destination });
     };
 
-    // ---------- CHARGEMENT DE TES POINTS PERSO ----------
+    // --- Tes points GeoJSON persos (batiments.geojson) ---
     const dataSource = await Cesium.GeoJsonDataSource.load("batiments.geojson", {
       clampToGround: true
     });
@@ -174,7 +176,7 @@
       }
     }
 
-    // ---------- TOOLTIP AU SURVOL POUR TES ENTITÉS ----------
+    // --- Tooltip au survol pour TES entités GeoJSON ---
     const hoverInfo = document.getElementById("hoverInfo");
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 
