@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Paris 3D - Bâtiments annotés</title>
+
+  <!-- CesiumJS depuis le CDN (version du Quickstart officiel) -->
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.135/Build/Cesium/Cesium.js"></script>
+  <link
+    href="https://cesium.com/downloads/cesiumjs/releases/1.135/Build/Cesium/Widgets/widgets.css"
+    rel="stylesheet"
+  />
+
+  <style>
+    html,
+    body,
+    #cesiumContainer {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    /* Tooltip au survol */
+    #hoverInfo {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(0, 0, 0, 0.85);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      max-width: 260px;
+      display: none;
+      z-index: 10;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+  <div id="hoverInfo"></div>
+
+  <!-- Code Cesium -->
+  <script type="module">
+    // Token Cesium ion de ton compte
+    Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIyMzI2ZTg2Ny0zZjZlLTQ1ZGMtYmQ1ZS0zOGI3MTU0NGRjYjYiLCJpZCI6MzYwMDE0LCJpYXQiOjE3NjMwMjc5Njd9.oneA95UdUxZN2hOvSfc8T5vO7C7YMFnFsucSyyj4ooQ';
+
+    // 2) Création du viewer
+    const viewer = new Cesium.Viewer("cesiumContainer", {
+      terrain: Cesium.Terrain.fromWorldTerrain(),
+      timeline: false,
+      animation: false,
+      geocoder: false,
+      homeButton: false,
+      sceneModePicker: false,
+      baseLayerPicker: true,
+      navigationHelpButton: false,
+      infoBox: false,          // on gère notre propre tooltip
+      selectionIndicator: false
+    });
+
+    // 3) Ajout des bâtiments 3D globaux (Cesium OSM Buildings)
+    const osmBuildings = await Cesium.createOsmBuildingsAsync();
+    viewer.scene.primitives.add(osmBuildings);
+
+    // 4) Vue de départ : Paris
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(2.3522, 48.8566, 1500), // Paris
+      orientation: {
+        heading: Cesium.Math.toRadians(0.0),
+        pitch: Cesium.Math.toRadians(-35.0),
+        roll: 0.0,
+      },
+      duration: 2.5,
+    });
+
+    // 5) Chargement de tes points / bâtiments depuis batiments.geojson
+    const dataSource = await Cesium.GeoJsonDataSource.load("batiments.geojson", {
+      clampToGround: true
+    });
+    viewer.dataSources.add(dataSource);
+
+    // 6) Style des "flags" (points) + labels
+    const entities = dataSource.entities.values;
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
+
+      // Point (rond) visible
+      entity.point = new Cesium.PointGraphics({
+        pixelSize: 12,
+        color: Cesium.Color.ORANGE,
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2
+      });
+
+      // Label avec le nom (optionnel)
+      if (entity.properties && entity.properties.nom) {
+        entity.label = new Cesium.LabelGraphics({
+          text: entity.properties.nom,
+          font: "14px sans-serif",
+          fillColor: Cesium.Color.WHITE,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          pixelOffset: new Cesium.Cartesian2(0, -18),
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY
+        });
+      }
+    }
+
+    // 7) Tooltip personnalisé AU SURVOL
+    const hoverInfo = document.getElementById("hoverInfo");
+    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+
+    handler.setInputAction(function (movement) {
+      const picked = viewer.scene.pick(movement.endPosition);
+
+      if (Cesium.defined(picked) && picked.id && picked.id.properties) {
+        const props = picked.id.properties;
+
+        const nom =
+          (props.nom && props.nom.getValue()) ||
+          picked.id.name ||
+          "Bâtiment";
+
+        const description =
+          (props.description && props.description.getValue()) ||
+          "";
+
+        hoverInfo.style.display = "block";
+        hoverInfo.style.left = movement.endPosition.x + 15 + "px";
+        hoverInfo.style.top = movement.endPosition.y + 15 + "px";
+        hoverInfo.innerHTML =
+          "<strong>" +
+          nom +
+          "</strong>" +
+          (description ? "<br>" + description : "");
+      } else {
+        hoverInfo.style.display = "none";
+      }
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+  </script>
+</body>
+</html>
