@@ -1,0 +1,27 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "nom": "Tour Eiffel",
+        "description": "Symbole de Paris, inaugurée en 1889. Environ 330 m de haut."
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [2.2945, 48.8584]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "nom": "Musée du Louvre",
+        "description": "Ancien palais royal, aujourd'hui l'un des plus grands musées du monde."
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [2.3364, 48.8606]
+      }
+    }
+  ]
+}
