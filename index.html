@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Paris 3D - Bâtiments annotés</title>
 
-  <!-- CesiumJS depuis le CDN (version du Quickstart officiel) -->
+  <!-- CesiumJS depuis le CDN -->
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.135/Build/Cesium/Cesium.js"></script>
   <link
     href="https://cesium.com/downloads/cesiumjs/releases/1.135/Build/Cesium/Widgets/widgets.css"
@@ -23,7 +23,6 @@
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
-    /* Tooltip au survol */
     #hoverInfo {
       position: absolute;
       pointer-events: none;
@@ -43,52 +42,49 @@
   <div id="cesiumContainer"></div>
   <div id="hoverInfo"></div>
 
-  <!-- Code Cesium -->
   <script type="module">
-    // Token Cesium ion de ton compte
+    // Ton token Cesium ion
     Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIyMzI2ZTg2Ny0zZjZlLTQ1ZGMtYmQ1ZS0zOGI3MTU0NGRjYjYiLCJpZCI6MzYwMDE0LCJpYXQiOjE3NjMwMjc5Njd9.oneA95UdUxZN2hOvSfc8T5vO7C7YMFnFsucSyyj4ooQ';
 
-    // 2) Création du viewer
+    // Création du viewer
     const viewer = new Cesium.Viewer("cesiumContainer", {
       terrain: Cesium.Terrain.fromWorldTerrain(),
       timeline: false,
       animation: false,
-      geocoder: true,
+      geocoder: true,          // ✅ barre de recherche activée
       homeButton: false,
       sceneModePicker: false,
       baseLayerPicker: true,
       navigationHelpButton: false,
-      infoBox: false,          // on gère notre propre tooltip
+      infoBox: false,
       selectionIndicator: false
     });
 
-    // 3) Ajout des bâtiments 3D globaux (Cesium OSM Buildings)
+    // Bâtiments OSM
     const osmBuildings = await Cesium.createOsmBuildingsAsync();
     viewer.scene.primitives.add(osmBuildings);
 
-    // 4) Vue de départ : Paris
+    // Vue sur Paris
     viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(2.3522, 48.8566, 1500), // Paris
+      destination: Cesium.Cartesian3.fromDegrees(2.3522, 48.8566, 1500),
       orientation: {
         heading: Cesium.Math.toRadians(0.0),
         pitch: Cesium.Math.toRadians(-35.0),
-        roll: 0.0,
+        roll: 0.0
       },
-      duration: 2.5,
+      duration: 2.5
     });
 
-    // 5) Chargement de tes points / bâtiments depuis batiments.geojson
+    // Chargement des points depuis batiments.geojson
     const dataSource = await Cesium.GeoJsonDataSource.load("batiments.geojson", {
       clampToGround: true
     });
     viewer.dataSources.add(dataSource);
 
-    // 6) Style des "flags" (points) + labels
     const entities = dataSource.entities.values;
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
 
-      // Point (rond) visible
       entity.point = new Cesium.PointGraphics({
         pixelSize: 12,
         color: Cesium.Color.ORANGE,
@@ -96,7 +92,6 @@
         outlineWidth: 2
       });
 
-      // Label avec le nom (optionnel)
       if (entity.properties && entity.properties.nom) {
         entity.label = new Cesium.LabelGraphics({
           text: entity.properties.nom,
@@ -111,7 +106,6 @@
       }
     }
 
-    // 7) Tooltip personnalisé AU SURVOL
     const hoverInfo = document.getElementById("hoverInfo");
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 
