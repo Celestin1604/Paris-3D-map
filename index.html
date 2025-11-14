@@ -37,10 +37,86 @@
       z-index: 10;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     }
+
+    /* Panneau rouge / bleu */
+    #selectionPanel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 20;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 10px 12px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+      max-width: 260px;
+      font-size: 13px;
+    }
+
+    #selectionPanel h3 {
+      margin: 0 0 6px;
+      font-size: 14px;
+    }
+
+    #selectionPanel p {
+      margin: 0 0 8px;
+      line-height: 1.3;
+    }
+
+    #selectionPanel button {
+      margin-right: 4px;
+      margin-bottom: 6px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    #addRedBtn {
+      background: #e53935;
+      color: #fff;
+    }
+
+    #addBlueBtn {
+      background: #1e88e5;
+      color: #fff;
+    }
+
+    #selectionPanel h4 {
+      margin: 6px 0 2px;
+      font-size: 13px;
+    }
+
+    #selectionPanel ul {
+      list-style: none;
+      padding-left: 10px;
+      margin: 0 0 4px;
+      max-height: 90px;
+      overflow-y: auto;
+      font-size: 12px;
+    }
   </style>
 </head>
 <body>
   <div id="cesiumContainer"></div>
+
+  <!-- Panneau de sélection rouge / bleu -->
+  <div id="selectionPanel">
+    <h3>Séléctions</h3>
+    <p style="margin-bottom:4px;">
+      1. Fais une recherche (barre en haut à droite).<br />
+      2. Quand la caméra est en place, clique sur :
+    </p>
+    <button id="addRedBtn">Ajouter en ROUGE</button>
+    <button id="addBlueBtn">Ajouter en BLEU</button>
+
+    <h4>Rouge</h4>
+    <ul id="redList"></ul>
+
+    <h4>Bleu</h4>
+    <ul id="blueList"></ul>
+  </div>
+
   <div id="hoverInfo"></div>
 
   <script type="module">
@@ -108,12 +184,24 @@
       }
     });
 
-    // === Gestion des couleurs des bâtiments ===
-    let redFeature = null;                     // bâtiment actuellement ROUGE
-    const blueFeatures = new Set();           // ensemble des bâtiments BLEUS
+    // === Gestion des bâtiments sélectionnés ===
+    let currentFeature = null;          // bâtiment de la recherche courante
+    let currentLabel = "";             // texte tapé dans la barre de recherche
+    const redFeatures = new Set();     // bâtiments rouges
+    const blueFeatures = new Set();    // bâtiments bleus
 
-    // Colorer le bâtiment sous le centre de l'écran en ROUGE
-    function highlightBuildingUnderCenter() {
+    const redListEl = document.getElementById("redList");
+    const blueListEl = document.getElementById("blueList");
+
+    function addListItem(listEl, label, color) {
+      const li = document.createElement("li");
+      li.textContent = label || "(adresse sans nom)";
+      li.style.color = color;
+      listEl.appendChild(li);
+    }
+
+    // Récupère le bâtiment sous le centre de l'écran
+    function pickBuildingUnderCenter() {
       const scene = viewer.scene;
       const canvas = scene.canvas;
 
@@ -122,56 +210,22 @@
         canvas.clientHeight / 2
       );
 
-      // On regarde tout ce qu'il y a sous le centre
       const picks = scene.drillPick(center);
-
       if (!Cesium.defined(picks) || picks.length === 0) {
-        return;
+        return null;
       }
-
-      let feature = null;
 
       for (let i = 0; i < picks.length; i++) {
         const p = picks[i];
-
-        // On veut un bâtiment OSM (feature 3D Tiles du tileset osmBuildings)
         if (
           p instanceof Cesium.Cesium3DTileFeature &&
           p.primitive === osmBuildings
         ) {
-          feature = p;
-          break;
+          return p;
         }
       }
-
-      if (!feature) {
-        return;
-      }
-
-      // Rendre l'ancien bâtiment rouge à sa couleur d'origine (blanc ou bleu)
-      if (redFeature && redFeature !== feature) {
-        if (blueFeatures.has(redFeature)) {
-          redFeature.color = Cesium.Color.BLUE.withAlpha(0.9);
-        } else {
-          redFeature.color = Cesium.Color.WHITE.withAlpha(0.9);
-        }
-      }
-
-      // Colore le nouveau bâtiment en ROUGE
-      feature.color = Cesium.Color.RED.withAlpha(0.9);
-      redFeature = feature;
+      return null;
     }
-
-    // Touche B : transformer le bâtiment ROUGE actuel en BLEU permanent
-    window.addEventListener("keydown", (e) => {
-      if (e.key === "b" || e.key === "B") {
-        if (redFeature) {
-          redFeature.color = Cesium.Color.BLUE.withAlpha(0.9);
-          blueFeatures.add(redFeature);
-          redFeature = null;
-        }
-      }
-    });
 
     // --- Branche la logique sur la barre de recherche ---
     const geocoderViewModel = viewer.geocoder.viewModel;
@@ -196,78 +250,39 @@
         searchMarker.show = true;
       }
 
-      // On vole vers la destination puis on surligne le bâtiment au centre
+      // On vole vers la destination puis on mémorise le bâtiment au centre
       viewer.camera.flyTo({
         destination: destination,
         complete: function () {
-          highlightBuildingUnderCenter();
+          const feature = pickBuildingUnderCenter();
+          currentFeature = feature;
+          currentLabel = viewModel.searchText || "";
         }
       });
     };
 
-    // --- Tes points GeoJSON persos (batiments.geojson) ---
-    const dataSource = await Cesium.GeoJsonDataSource.load("batiments.geojson", {
-      clampToGround: true
+    // --- Boutons "Ajouter en ROUGE" / "Ajouter en BLEU" ---
+    document.getElementById("addRedBtn").addEventListener("click", () => {
+      if (!currentFeature) {
+        return;
+      }
+
+      // Si le bâtiment était bleu, on l'enlève du set bleu
+      if (blueFeatures.has(currentFeature)) {
+        blueFeatures.delete(currentFeature);
+      }
+
+      // Met en rouge
+      currentFeature.color = Cesium.Color.RED.withAlpha(0.9);
+      redFeatures.add(currentFeature);
+
+      addListItem(redListEl, currentLabel, "#e53935");
     });
-    viewer.dataSources.add(dataSource);
 
-    const entities = dataSource.entities.values;
-    for (let i = 0; i < entities.length; i++) {
-      const entity = entities[i];
-
-      // Points ORANGE pour tes bâtiments annotés
-      entity.point = new Cesium.PointGraphics({
-        pixelSize: 12,
-        color: Cesium.Color.ORANGE,
-        outlineColor: Cesium.Color.WHITE,
-        outlineWidth: 2
-      });
-
-      if (entity.properties && entity.properties.nom) {
-        entity.label = new Cesium.LabelGraphics({
-          text: entity.properties.nom,
-          font: "14px sans-serif",
-          fillColor: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          pixelOffset: new Cesium.Cartesian2(0, -18),
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY
-        });
+    document.getElementById("addBlueBtn").addEventListener("click", () => {
+      if (!currentFeature) {
+        return;
       }
-    }
 
-    // --- Tooltip au survol pour TES entités GeoJSON ---
-    const hoverInfo = document.getElementById("hoverInfo");
-    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-
-    handler.setInputAction(function (movement) {
-      const picked = viewer.scene.pick(movement.endPosition);
-
-      if (Cesium.defined(picked) && picked.id && picked.id.properties) {
-        const props = picked.id.properties;
-
-        const nom =
-          (props.nom && props.nom.getValue()) ||
-          picked.id.name ||
-          "Bâtiment";
-
-        const description =
-          (props.description && props.description.getValue()) ||
-          "";
-
-        hoverInfo.style.display = "block";
-        hoverInfo.style.left = movement.endPosition.x + 15 + "px";
-        hoverInfo.style.top = movement.endPosition.y + 15 + "px";
-        hoverInfo.innerHTML =
-          "<strong>" +
-          nom +
-          "</strong>" +
-          (description ? "<br>" + description : "");
-      } else {
-        hoverInfo.style.display = "none";
-      }
-    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
-  </script>
-</body>
-</html>
+      // S'il était rouge, on l'enlève du set rouge
+      if (redFeatures.has(currentF
