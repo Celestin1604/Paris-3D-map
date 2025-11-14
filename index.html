@@ -54,7 +54,7 @@
       imageryProvider: false,   // pas de fond par défaut
       timeline: false,
       animation: false,
-      geocoder: true,           // ✅ barre de recherche
+      geocoder: true,          // ✅ barre de recherche
       homeButton: false,
       sceneModePicker: false,
       baseLayerPicker: false,
@@ -63,43 +63,35 @@
       selectionIndicator: false
     });
 
-    // Anti-aliasing pour un rendu plus propre
-    viewer.scene.postProcessStages.fxaa.enabled = true;
-
-    // --- Fond de carte sans labels (Carto Positron no labels) ---
+    // --- Fond de carte type OSM clair / désaturé ---
     viewer.imageryLayers.removeAll();
-    const baseLayer = viewer.imageryLayers.addImageryProvider(
-      new Cesium.UrlTemplateImageryProvider({
-        url:
-          "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png",
-        subdomains: ["a", "b", "c", "d"]
+    const osmLayer = viewer.imageryLayers.addImageryProvider(
+      new Cesium.OpenStreetMapImageryProvider({
+        url: "https://a.tile.openstreetmap.org/"
       })
     );
-    baseLayer.brightness = 1.05;
-    baseLayer.saturation = 0.0; // quasi noir & blanc
-    baseLayer.contrast = 1.0;
+    osmLayer.saturation = 0.0;   // noir et blanc
+    osmLayer.brightness = 1.1;   // un peu plus lumineux
+    osmLayer.contrast = 1.05;    // léger contraste
 
     // --- Bâtiments OSM 3D ---
     const osmBuildings = await Cesium.createOsmBuildingsAsync();
     viewer.scene.primitives.add(osmBuildings);
 
-    // Plus de détail même sans zoom extrême
-    osmBuildings.maximumScreenSpaceError = 2.0;
-
-    // Style général des bâtiments façon maquette (blanc cassé opaque)
-    const baseBuildingColor = Cesium.Color.fromCssColorString("#f5f5f5");
+    // Style général des bâtiments façon maquette (blanc cassé)
     osmBuildings.style = new Cesium.Cesium3DTileStyle({
-      color: "color('#f5f5f5')"
+      color: "color('white', 0.9)"
     });
 
-    // Vue de départ : un peu au-dessus de Paris, angle 3D
-    viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(2.35, 48.86, 4500),
+    // Vue de départ : Paris
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(2.3522, 48.8566, 1500),
       orientation: {
-        heading: Cesium.Math.toRadians(-20.0),
-        pitch: Cesium.Math.toRadians(-40.0),
+        heading: Cesium.Math.toRadians(0.0),
+        pitch: Cesium.Math.toRadians(-35.0),
         roll: 0.0
-      }
+      },
+      duration: 2.5
     });
 
     // --- Point rouge pour la recherche ---
@@ -116,10 +108,11 @@
       }
     });
 
-    // On garde en mémoire le dernier bâtiment surligné
-    let lastHighlightedFeature = null;
+    // === Gestion des couleurs des bâtiments ===
+    let redFeature = null;                     // bâtiment actuellement ROUGE
+    const blueFeatures = new Set();           // ensemble des bâtiments BLEUS
 
-    // ✅ Colorer le bâtiment situé AU CENTRE de l'écran
+    // Colorer le bâtiment sous le centre de l'écran en ROUGE
     function highlightBuildingUnderCenter() {
       const scene = viewer.scene;
       const canvas = scene.canvas;
@@ -129,7 +122,7 @@
         canvas.clientHeight / 2
       );
 
-      // Tous les objets sous le centre
+      // On regarde tout ce qu'il y a sous le centre
       const picks = scene.drillPick(center);
 
       if (!Cesium.defined(picks) || picks.length === 0) {
@@ -141,6 +134,7 @@
       for (let i = 0; i < picks.length; i++) {
         const p = picks[i];
 
+        // On veut un bâtiment OSM (feature 3D Tiles du tileset osmBuildings)
         if (
           p instanceof Cesium.Cesium3DTileFeature &&
           p.primitive === osmBuildings
@@ -154,17 +148,32 @@
         return;
       }
 
-      // Remet l'ancien bâtiment en couleur de base
-      if (lastHighlightedFeature) {
-        lastHighlightedFeature.color = baseBuildingColor;
+      // Rendre l'ancien bâtiment rouge à sa couleur d'origine (blanc ou bleu)
+      if (redFeature && redFeature !== feature) {
+        if (blueFeatures.has(redFeature)) {
+          redFeature.color = Cesium.Color.BLUE.withAlpha(0.9);
+        } else {
+          redFeature.color = Cesium.Color.WHITE.withAlpha(0.9);
+        }
       }
 
-      // Colore le nouveau bâtiment en rouge
-      feature.color = Cesium.Color.RED;
-      lastHighlightedFeature = feature;
+      // Colore le nouveau bâtiment en ROUGE
+      feature.color = Cesium.Color.RED.withAlpha(0.9);
+      redFeature = feature;
     }
 
-    // --- Barre de recherche : déplacement + highlight ---
+    // Touche B : transformer le bâtiment ROUGE actuel en BLEU permanent
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "b" || e.key === "B") {
+        if (redFeature) {
+          redFeature.color = Cesium.Color.BLUE.withAlpha(0.9);
+          blueFeatures.add(redFeature);
+          redFeature = null;
+        }
+      }
+    });
+
+    // --- Branche la logique sur la barre de recherche ---
     const geocoderViewModel = viewer.geocoder.viewModel;
 
     geocoderViewModel.destinationFound = function (viewModel, destination) {
@@ -182,10 +191,12 @@
       }
 
       if (position) {
+        // Place / déplace le point rouge
         searchMarker.position = position;
         searchMarker.show = true;
       }
 
+      // On vole vers la destination puis on surligne le bâtiment au centre
       viewer.camera.flyTo({
         destination: destination,
         complete: function () {
@@ -204,6 +215,7 @@
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
 
+      // Points ORANGE pour tes bâtiments annotés
       entity.point = new Cesium.PointGraphics({
         pixelSize: 12,
         color: Cesium.Color.ORANGE,
