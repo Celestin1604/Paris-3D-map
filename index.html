@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Paris 3D - Bâtiments annotés</title>
 
-  
+  <!-- CesiumJS depuis le CDN -->
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.135/Build/Cesium/Cesium.js"></script>
   <link
     href="https://cesium.com/downloads/cesiumjs/releases/1.135/Build/Cesium/Widgets/widgets.css"
@@ -54,7 +54,7 @@
       imageryProvider: false,   // pas de fond par défaut
       timeline: false,
       animation: false,
-      geocoder: true,          // ✅ barre de recherche
+      geocoder: true,           // ✅ barre de recherche
       homeButton: false,
       sceneModePicker: false,
       baseLayerPicker: false,
@@ -63,6 +63,10 @@
       selectionIndicator: false
     });
 
+    // Anti-aliasing + lumière pour un rendu plus clean
+    viewer.scene.postProcessStages.fxaa.enabled = true;
+    viewer.scene.globe.enableLighting = true;
+
     // --- Fond de carte type OSM clair / désaturé ---
     viewer.imageryLayers.removeAll();
     const osmLayer = viewer.imageryLayers.addImageryProvider(
@@ -70,17 +74,19 @@
         url: "https://a.tile.openstreetmap.org/"
       })
     );
-    osmLayer.saturation = 0.0;   // noir et blanc
-    osmLayer.brightness = 1.1;   // un peu plus lumineux
-    osmLayer.contrast = 1.05;    // léger contraste
+    osmLayer.saturation = 0.0;   // noir & blanc
+    osmLayer.brightness = 1.05;  // légèrement plus clair
+    osmLayer.contrast = 1.0;     // contraste neutre
+    osmLayer.alpha = 0.9;        // un tout petit peu transparent
 
     // --- Bâtiments OSM 3D ---
     const osmBuildings = await Cesium.createOsmBuildingsAsync();
     viewer.scene.primitives.add(osmBuildings);
 
-    // Style général des bâtiments façon maquette (blanc cassé)
+    // Style général des bâtiments façon maquette (blanc cassé OPAQUE)
+    const baseBuildingColor = Cesium.Color.fromCssColorString("#f5f5f5");
     osmBuildings.style = new Cesium.Cesium3DTileStyle({
-      color: "color('white', 0.9)"
+      color: "color('#f5f5f5')"
     });
 
     // Vue de départ : Paris
@@ -147,13 +153,13 @@
         return;
       }
 
-      // Remet l'ancien bâtiment en blanc cassé
+      // Remet l'ancien bâtiment sur la couleur de base
       if (lastHighlightedFeature) {
-        lastHighlightedFeature.color = Cesium.Color.WHITE.withAlpha(0.9);
+        lastHighlightedFeature.color = baseBuildingColor;
       }
 
-      // Colore le nouveau bâtiment en ROUGE
-      feature.color = Cesium.Color.RED.withAlpha(0.9);
+      // Colore le nouveau bâtiment en ROUGE (opaque)
+      feature.color = Cesium.Color.RED;
       lastHighlightedFeature = feature;
     }
 
